@@ -1,0 +1,151 @@
+version: '3.3'
+
+services:
+  micro_investment_db:
+    restart: always
+    image: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "54035:5432"
+    networks:
+      - micro-investment-network
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=${DB_HOST}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+  micro_investment_web:
+    restart: always
+    build: ./src
+    networks:
+      - micro-investment-network
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             python manage.py makemigrations &&
+             python manage.py migrate &&
+             gunicorn --bind 0.0.0.0:8000 --timeout 300 --worker-class=gevent --worker-connections=1000 --workers=5 micro_investment.wsgi"
+    volumes:
+      - ./src:/src
+      - ./src/micro_investment:/src/micro_investment
+      - ./src/static:/src/static
+      - ./src/media:/src/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - STATIC_ROOT=/app/static
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CELERY_BROKER=${CELERY_BROKER}
+      - CELERY_BACKEND=${CELERY_BACKEND}
+      - MEDIA_URL=/app/media/
+    env_file:
+      - .env
+    depends_on:
+      - micro_investment_db
+  micro_investment_redis:
+    restart: always
+    image: redis
+    container_name: micro_investment_redis
+    user: root
+    command: redis-server --appendonly yes
+    networks:
+      - micro-investment-network
+    ports:
+      - "63080:6379"
+    env_file:
+      - .env
+    volumes:
+      - redis_data:/usr/local/etc/redis/redis.conf
+    environment:
+     - REDIS_HOST=${REDIS_HOST}
+     - REDIS_PORT=${REDIS_PORT}
+
+  celery:
+    restart: always
+    build: ./src
+    command: bash -c "celery -A micro_investment worker -l INFO"
+    volumes:
+      - ./src/micro_investment:/src/micro_investment
+      - ./src/static:/src/static
+      - ./src/media:/src/media
+    networks:
+      - micro-investment-network
+    env_file:
+      - .env
+    environment:
+     - CELERY_BROKER=${CELERY_BROKER}
+     - RESULT_BACKEND=${CELERY_BACKEND}
+     - REDIS_HOST=${REDIS_HOST}
+     - REDIS_PORT=${REDIS_PORT}
+     - REDIS_PASSWORD=${REDIS_PASSWORD}
+    links:
+      - micro_investment_redis
+    depends_on:
+      - micro_investment_web
+      - micro_investment_redis
+      - micro_investment_db
+  
+  celery_beat:
+    restart: always
+    build: ./src
+    command: celery -A micro_investment beat -l info
+    volumes:
+      - ./src/micro_investment:/src/micro_investment
+      - ./src/static:/src/static
+      - ./src/media:/src/media
+    env_file:
+      - .env
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - CELERY_BROKER=${CELERY_BROKER}
+      - RESULT_BACKEND=${CELERY_BACKEND}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - micro-investment-network
+    links:
+      - micro_investment_redis
+    depends_on:
+      - micro_investment_web
+      - micro_investment_redis
+      - micro_investment_db
+  # nginx:
+  #   restart: always
+  #   build: ./nginx
+  #   volumes:
+  #     - ./src:/usr/share/nginx/html
+  #   ports:
+  #     # - "443:443"
+  #     - "8080:80"
+  #   depends_on:
+  #     - micro_investment_web
+  #   networks:
+  #     - micro-investment-network
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  static:
+    driver: local
+  media:
+    driver: local
+  web:
+    driver: local
+  # html:
+  #   driver: local
+  # vhost:
+  #   driver: local
+  # acme:
+  #   driver: local
+
+networks:
+  micro-investment-network:
+    driver: bridge

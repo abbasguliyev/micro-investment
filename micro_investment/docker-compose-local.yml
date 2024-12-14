@@ -4,6 +4,7 @@ services:
   micro_investment_db:
     restart: always
     image: postgres
+    container_name: micro_investment_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
@@ -20,6 +21,7 @@ services:
   micro_investment_web:
     restart: always
     build: ./src
+    container_name: micro_investment_web
     networks:
       - micro-investment-network
     command: >
@@ -68,6 +70,7 @@ services:
   celery:
     restart: always
     build: ./src
+    container_name: micro_investment_celery
     command: bash -c "celery -A micro_investment worker -l INFO"
     volumes:
       - ./src/micro_investment:/src/micro_investment
@@ -93,6 +96,7 @@ services:
   celery_beat:
     restart: always
     build: ./src
+    container_name: micro_investment_celery_beat
     command: celery -A micro_investment beat -l info
     volumes:
       - ./src/micro_investment:/src/micro_investment

@@ -13,4 +13,4 @@ docker-compose up
 # Micro Investment Frontend
 ## Configuration and run
 npm i \
-npm run dev \
+npm run dev
